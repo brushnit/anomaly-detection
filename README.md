@@ -7,6 +7,13 @@ Exploring & Optimizing Anomaly Detection Methods
 
 [.venv powershell permissions](https://stackoverflow.com/questions/18713086/virtualenv-wont-activate-on-windows)
 
+
+
+
+#### Misc:
+
+https://github.com/yzhao062/pyod
+
 https://github.com/odnura/adtk
 
 https://github.com/awslabs/gluonts
