@@ -6,64 +6,39 @@ from datetime import date
 def create_time_series(
     start_date,
     magnitude=10.0,
-    log_rate=1.0,
+    floor=0.0,
+    log_rate=[1.0],
     seasonal_cycles={},
     seed=None,
     y_label="y",
     plot=False,
 ):
-    """
-    Creates a time series dataset with a seasonal component.
-
-    Parameters
-    ----------
-    start_date : str or datetime-like
-        The starting date for the time series (data runs until today).
-    magnitude : float
-        Scales the amplitude of the entire signal.
-    log_rate : float
-        Average number of readings per day.
-    seasonal_cycles : dict or None
-        Dict of {period_in_days: amplitude}, e.g. {7: 0.5, 365.25: 1.0}
-    seed : int or None
-        Random seed for reproducibility (None means no seed is set).
-    y_label : str, optional
-        Column name for the value column in the returned DataFrame (default: "y").
-    plot : bool, optional
-        If True, displays a matplotlib plot of the time series (default: False).
-
-    Returns
-    -------
-    pd.DataFrame
-        A DataFrame with columns ["time", y_label], where "time" contains
-        normalized DatetimeIndex values and y_label contains the simulated values.
-        Only one entry per day is returned (mean of any same-day values, rounded).
-    """
     rng = np.random.default_rng(seed)
     start = pd.Timestamp(start_date)
 
-    # Fourier transform-based seasonal component generator, for week and year cycles (or any 2 defined seaosonal cycles)
     def seasonal_component(t, cycles):
         return sum((a * np.sin(2 * np.pi * t / p) for p, a in cycles.items()), np.zeros(len(t)))
 
-    # Simulate data from start date to today
     duration_days = (date.today() - start.date()).days
-    
-    actual_samples = min(rng.poisson(log_rate * duration_days), duration_days) # n_samples based on log_rate and duration
-    time_numeric = np.sort(rng.uniform(0, duration_days, actual_samples))
+
+    n_samples = min(rng.poisson(log_rate * duration_days), duration_days)
+    time_numeric = np.sort(rng.uniform(0, duration_days, n_samples))
     time = (start + pd.to_timedelta(time_numeric, unit="D")).normalize()
 
     seasonal = seasonal_component(time_numeric, seasonal_cycles)
-    noise = rng.standard_normal(actual_samples)
-    y = np.clip((seasonal + noise) * magnitude, 0, None).round().astype(int)
+    noise = rng.standard_normal(n_samples)
+
+    y = ((seasonal + noise) * magnitude + floor).round().astype(int)
+
+    mask = y >= floor
+    time, y = time[mask], y[mask]
 
     df = (
-    pd.DataFrame({"time": time, y_label: y})
-    .loc[y > 0]
-    .groupby("time", as_index=False)[y_label]
-    .mean()
-    .assign(**{y_label: lambda x: x[y_label].round().astype(int)})
-)
+        pd.DataFrame({"time": time, y_label: y})
+        .groupby("time", as_index=False)[y_label]
+        .mean()
+        .assign(**{y_label: lambda x: x[y_label].round().astype(int)})
+    )
 
     if plot:
         plt.figure(figsize=(10, 6))
@@ -75,3 +50,67 @@ def create_time_series(
         plt.show()
 
     return df
+
+def create_time_series_ensemble(
+    start_date,
+    magnitude=10.0,
+    floor=0.0,
+    log_rates=[1.0],
+    seasonal_cycles={},
+    seed=None,
+    y_label="source",
+    plot=False,
+):
+    rng = np.random.default_rng(seed)
+    start = pd.Timestamp(start_date)
+
+    def seasonal_component(t, cycles):
+        return sum((a * np.sin(2 * np.pi * t / p) for p, a in cycles.items()), np.zeros(len(t)))
+
+    duration_days = (date.today() - start.date()).days
+
+    # Shared ground truth signal
+    gt_t = np.arange(duration_days, dtype=float)
+    gt_signal = seasonal_component(gt_t, seasonal_cycles)
+
+    dfs = []
+    for i, log_rate in enumerate(log_rates):
+        col = f"{y_label}_{i + 1}"
+
+        n_samples = min(rng.poisson(log_rate * duration_days), duration_days)
+        time_numeric = np.sort(rng.choice(gt_t, size=n_samples, replace=False))
+        time = (start + pd.to_timedelta(time_numeric, unit="D")).normalize()
+
+        seasonal = gt_signal[time_numeric.astype(int)]
+        noise = rng.standard_normal(n_samples)
+
+        y = ((seasonal + noise) * magnitude + floor).round().astype(int)
+        mask = y >= floor
+        time, y = time[mask], y[mask]
+
+        df = (
+            pd.DataFrame({"time": time, col: y})
+            .groupby("time", as_index=False)[col]
+            .mean()
+            .assign(**{col: lambda x: x[col].round().astype(int)})
+        )
+        dfs.append(df)
+
+    combined = dfs[0]
+    for df in dfs[1:]:
+        combined = combined.merge(df, on="time", how="outer")
+    combined = combined.sort_values("time").reset_index(drop=True)
+
+    if plot:
+        fig, ax = plt.subplots(figsize=(14, 4))
+        for i in range(len(log_rates)):
+            col = f"{y_label}_{i + 1}"
+            ax.plot(combined["time"], combined[col], ".", markersize=3, label=col)
+        ax.set_title("Simulated Sensor Ensemble")
+        ax.set_xlabel("Time")
+        ax.set_ylabel("Detections")
+        ax.legend()
+        plt.tight_layout()
+        plt.show()
+
+    return combined
