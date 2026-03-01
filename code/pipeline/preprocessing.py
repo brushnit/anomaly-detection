@@ -9,7 +9,7 @@ from utils.time_series_generator import create_time_series_ensemble
 def aggregate_streams(
     stream_counts: np.ndarray,
     stream_confidences: np.ndarray,
-    min_valid: int = 2,
+    min_valid: int = 0,
 ) -> tuple[float, float, bool]:
     """
     Confidence-weighted mean across streams.
@@ -25,7 +25,7 @@ def aggregate_streams(
     mean_conf = float(stream_confidences[valid].mean())
     return count, mean_conf, valid.sum() < len(stream_counts)
 
-
+# dont know how i feel about this
 def stream_divergence(
     stream_counts: np.ndarray,
 ) -> float:
@@ -35,7 +35,7 @@ def stream_divergence(
         return 0.0
     return float(valid.std() / (valid.mean() + 1e-9))
 
-
+# maybe return confidence weight?
 def nan_audit(stream_counts: np.ndarray) -> str:
     """
     Classify NaN pattern for downstream handling.
