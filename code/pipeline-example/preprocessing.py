@@ -48,7 +48,7 @@ def nan_audit(stream_counts: np.ndarray) -> str:
         return "low_confidence"
     return "ok"
 
-
+# need to define/standardize this
 def type_composition_vector(
     type_counts: dict[str, float],
     aircraft_types: list[str] = ("commercial", "cargo", "GA", "military", "other"),
